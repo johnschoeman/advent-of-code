@@ -1,0 +1,26 @@
+{
+  "name": "advent_of_code_2023",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest",
+    "day": "npx ts-node \"src/${npm_config_dir}/index.ts\"",
+    "prettier": "prettier -l \"**/*.{js,jsx,ts,tsx}\"",
+    "format": "prettier -w \"**/*.{js,jsx,ts,tsx}\"",
+    "prep": "npm run format && npm run lint:fix"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "effect": "^2.0.0-next.60",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.4",
+    "prettier": "^3.1.1",
+    "ts-node": "^10.9.2",
+    "vitest": "^1.0.4"
+  }
+}
