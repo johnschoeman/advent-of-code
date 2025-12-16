@@ -2,74 +2,73 @@ use nom::Parser;
 use nom::{
     IResult,
     bytes::complete::tag,
-    character::complete::{digit1, line_ending},
+    character::complete::{digit1, multispace0},
     combinator::{all_consuming, map, map_res},
-    multi::{many0, many1, separated_list0, separated_list1},
+    multi::separated_list0,
     sequence::{delimited, separated_pair},
 };
 
 use std::fs;
 
 const FILE_PATH: &str = "./input.txt";
-const DAY_AND_PART: &str = "Day 2 Part 1";
+const DAY_AND_PART: &str = "Day 2 Part 2";
 
 #[derive(Clone, Debug, PartialEq)]
-struct IDRange(u64, u64);
+struct IDRange {
+    start: u64,
+    end: u64,
+}
 
 fn id(input: &str) -> IResult<&str, u64> {
     map_res(digit1, str::parse).parse(input)
 }
 
 fn id_range(input: &str) -> IResult<&str, IDRange> {
-    map(separated_pair(id, tag("-"), id), |(start, end)| {
-        IDRange(start, end)
+    map(separated_pair(id, tag("-"), id), |(start, end)| IDRange {
+        start,
+        end,
     })
     .parse(input)
 }
 
 fn parse(input: &str) -> IResult<&str, Vec<IDRange>> {
     all_consuming(delimited(
-        many0(line_ending),
+        multispace0,
         separated_list0(tag(","), id_range),
-        many1(line_ending),
+        multispace0,
     ))
     .parse(input)
 }
 
 fn is_valid_id(id: &str) -> bool {
-    let is_odd = id.len() % 2 == 1;
-    if is_odd {
-        return true;
-    }
+    let bytes = id.as_bytes();
+    let n = bytes.len();
+    let mid = n / 2;
 
-    let mid = id.len() / 2;
+    for chunk_size in 1..=mid {
+        if n % chunk_size != 0 {
+            continue;
+        }
 
-    let (left, right) = id.split_at(mid);
+        let pattern = &bytes[..chunk_size];
+        let repeats = bytes.chunks_exact(chunk_size).all(|chunk| chunk == pattern);
 
-    left != right
-}
-
-fn invalid_in_range(id_range: &IDRange) -> Vec<u64> {
-    let mut invalid_ids = vec![];
-    let (start, end) = (id_range.0, id_range.1 + 1);
-
-    for id in start..end {
-        let id_str: &str = &id.to_string();
-        if !is_valid_id(id_str) {
-            invalid_ids.push(id);
+        if repeats {
+            return false;
         }
     }
 
-    invalid_ids
+    true
+}
+
+fn invalid_in_range_sum(id_range: &IDRange) -> u64 {
+    (id_range.start..=id_range.end)
+        .filter(|id| !is_valid_id(&id.to_string()))
+        .sum()
 }
 
 fn solve(parsed: &[IDRange]) -> u64 {
-    let result = parsed.iter().fold(0, |acc, range| {
-        let invalid_ids = invalid_in_range(range);
-        let sum_of_range = invalid_ids.into_iter().fold(0, |a, id| a + id);
-        acc + sum_of_range
-    });
-    result
+    parsed.iter().map(invalid_in_range_sum).sum()
 }
 
 fn main() {
@@ -88,17 +87,47 @@ mod tests {
         let input = "11-22,95-115,998-1012,1188511880-1188511890,222220-222224,1698522-1698528,446443-446449,38593856-38593862,565653-565659,824824821-824824827,2121212118-2121212124";
 
         let expected: Vec<IDRange> = vec![
-            IDRange(11, 22),
-            IDRange(95, 115),
-            IDRange(998, 1012),
-            IDRange(1188511880, 1188511890),
-            IDRange(222220, 222224),
-            IDRange(1698522, 1698528),
-            IDRange(446443, 446449),
-            IDRange(38593856, 38593862),
-            IDRange(565653, 565659),
-            IDRange(824824821, 824824827),
-            IDRange(2121212118, 2121212124),
+            IDRange { start: 11, end: 22 },
+            IDRange {
+                start: 95,
+                end: 115,
+            },
+            IDRange {
+                start: 998,
+                end: 1012,
+            },
+            IDRange {
+                start: 1188511880,
+                end: 1188511890,
+            },
+            IDRange {
+                start: 222220,
+                end: 222224,
+            },
+            IDRange {
+                start: 1698522,
+                end: 1698528,
+            },
+            IDRange {
+                start: 446443,
+                end: 446449,
+            },
+            IDRange {
+                start: 38593856,
+                end: 38593862,
+            },
+            IDRange {
+                start: 565653,
+                end: 565659,
+            },
+            IDRange {
+                start: 824824821,
+                end: 824824827,
+            },
+            IDRange {
+                start: 2121212118,
+                end: 2121212124,
+            },
         ];
 
         let (_remaining, parsed) = parse(input).expect("parser should succeed");
@@ -108,75 +137,69 @@ mod tests {
 
     #[test]
     fn test_is_valid_id() {
-        let id1 = "11";
-        let result1 = is_valid_id(id1);
-        assert_eq!(result1, false, "id: 11");
+        let cases = [
+            ("11", false),
+            ("55", false),
+            ("6464", false),
+            ("423423", false),
+            ("0505", false),
+            ("606", true),
+            ("1234", true),
+            ("121212", false),
+        ];
 
-        let id2 = "55";
-        let result2 = is_valid_id(id2);
-        assert_eq!(result2, false, "id: 55");
-
-        let id3 = "6464";
-        let result3 = is_valid_id(id3);
-        assert_eq!(result3, false, "id: 6464");
-
-        let id4 = "423423";
-        let result4 = is_valid_id(id4);
-        assert_eq!(result4, false, "id: 423423");
-
-        let id5 = "0505";
-        let result5 = is_valid_id(id5);
-        assert_eq!(result5, false, "id: 0505");
-
-        let id6 = "606";
-        let result6 = is_valid_id(id6);
-        assert_eq!(result6, true, "id: 606");
-
-        let id7 = "1234";
-        let result7 = is_valid_id(id7);
-        assert_eq!(result7, true, "id: 1234");
+        for (id, expected) in cases {
+            assert_eq!(is_valid_id(id), expected, "id: {id}")
+        }
     }
 
     #[test]
-    fn test_invalid_in_range() {
-        let id_range1 = IDRange(11, 22);
-        let result1 = invalid_in_range(&id_range1);
-        assert_eq!(result1, vec![11, 22], "id range: 11-22");
+    fn test_invalid_in_range_sum() {
+        let cases = [
+            (IDRange { start: 11, end: 22 }, 11 + 22),
+            (
+                IDRange {
+                    start: 95,
+                    end: 115,
+                },
+                99 + 111,
+            ),
+            (
+                IDRange {
+                    start: 998,
+                    end: 1012,
+                },
+                999 + 1010,
+            ),
+            (
+                IDRange {
+                    start: 1188511880,
+                    end: 1188511890,
+                },
+                1188511885,
+            ),
+            (
+                IDRange {
+                    start: 1698522,
+                    end: 1698528,
+                },
+                0,
+            ),
+        ];
 
-        // 95-115 has one invalid ID, 99.
-        let id_range2 = IDRange(95, 115);
-        let result2 = invalid_in_range(&id_range2);
-        assert_eq!(result2, vec![99], "id range: 95-115");
-
-        // 998-1012 has one invalid ID, 1010.
-        let id_range3 = IDRange(998, 1012);
-        let result3 = invalid_in_range(&id_range3);
-        assert_eq!(result3, vec![1010], "id range: 998-1012");
-
-        // 1188511880-1188511890 has one invalid ID, 1188511885.
-        let id_range4 = IDRange(1188511880, 1188511890);
-        let result4 = invalid_in_range(&id_range4);
-        assert_eq!(result4, vec![1188511885], "id range: 1188511880-1188511890");
-
-        // 222220-222224 has one invalid ID, 222222.
-        let id_range5 = IDRange(222220, 222224);
-        let result5 = invalid_in_range(&id_range5);
-        assert_eq!(result5, vec![222222], "id range: 222220-222224");
-
-        // 1698522-1698528 contains no invalid IDs.
-        let id_range6 = IDRange(1698522, 1698528);
-        let result6 = invalid_in_range(&id_range6);
-        assert_eq!(result6, vec![], "id range: 1698522-1698528");
+        for (range, expected) in cases {
+            assert_eq!(invalid_in_range_sum(&range), expected);
+        }
     }
 
     #[test]
-    fn test_day_2_part_1() {
+    fn test_day_2_part_2() {
         let input = "11-22,95-115,998-1012,1188511880-1188511890,222220-222224,1698522-1698528,446443-446449,38593856-38593862,565653-565659,824824821-824824827,2121212118-2121212124";
 
         let (_remaining, id_ranges) = parse(input).expect("should parse");
 
         let result = solve(&id_ranges);
-        let expected = 1227775554;
+        let expected = 4174379265;
         assert_eq!(result, expected);
     }
 }
