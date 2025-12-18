@@ -1,9 +1,9 @@
 use nom::Parser;
 use nom::{
     IResult,
-    character::complete::{digit1, line_ending},
+    character::complete::{digit1, line_ending, multispace0},
     combinator::all_consuming,
-    multi::{many0, separated_list1},
+    multi::separated_list1,
     sequence::delimited,
 };
 
@@ -12,41 +12,56 @@ use std::fs;
 const FILE_PATH: &str = "./input.txt";
 const DAY_AND_PART: &str = "Day 3 Part 1";
 
-type BatteryBank = Vec<u32>;
+#[derive(Debug, PartialOrd, PartialEq)]
+struct BatteryBank {
+    digits: Vec<u8>,
+}
+
+fn digits_to_u64(digits: &[u8]) -> u64 {
+    digits.iter().fold(0u64, |acc, &d| acc * 10 + d as u64)
+}
 
 fn battery_bank(input: &str) -> IResult<&str, BatteryBank> {
     digit1
-        .map(|s: &str| s.bytes().map(|b| (b - b'0') as u32).collect())
+        .map(|s: &str| s.bytes().map(|b| b - b'0').collect())
+        .map(|digits| BatteryBank { digits })
         .parse(input)
 }
 
 fn parse(input: &str) -> IResult<&str, Vec<BatteryBank>> {
     all_consuming(delimited(
-        many0(line_ending),
+        multispace0,
         separated_list1(line_ending, battery_bank),
-        many0(line_ending),
+        multispace0,
     ))
     .parse(input)
 }
 
-fn bank_has_jolt(bank: &[u32], jolt: u32) -> bool {
-    let first = jolt / 10;
-    let second = jolt % 10;
+fn find_largest_joltage(joltage_size: usize, battery_bank: &BatteryBank) -> u64 {
+    let n = battery_bank.digits.len();
 
-    bank.iter()
-        .position(|&x| x == first)
-        .is_some_and(|i| bank[i + 1..].iter().any(|&y| y == second))
+    if n <= joltage_size {
+        return digits_to_u64(&battery_bank.digits);
+    }
+
+    let mut max_bank = BatteryBank { digits: vec![0] };
+    for idx in 0..n {
+        let mut next_bank = battery_bank.digits.clone();
+        next_bank.remove(idx);
+        let next_battery_bank = BatteryBank { digits: next_bank };
+        if next_battery_bank > max_bank {
+            max_bank = next_battery_bank;
+        }
+    }
+
+    find_largest_joltage(12, &max_bank)
 }
 
-fn find_largest_joltage(bank: &[u32]) -> u32 {
-    (10..=99)
-        .rev()
-        .find(|&jolt| bank_has_jolt(bank, jolt))
-        .unwrap_or(0)
-}
-
-fn solve(parsed: &[BatteryBank]) -> u32 {
-    parsed.iter().map(|bank| find_largest_joltage(bank)).sum()
+fn solve(parsed: &[BatteryBank]) -> u64 {
+    parsed
+        .iter()
+        .map(|bank| find_largest_joltage(12, bank))
+        .sum()
 }
 
 fn main() {
@@ -68,10 +83,18 @@ mod tests {
 818181911112111";
 
         let expected: Vec<BatteryBank> = vec![
-            vec![9, 8, 7, 6, 5, 4, 3, 2, 1, 1, 1, 1, 1, 1, 1],
-            vec![8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 9],
-            vec![2, 3, 4, 2, 3, 4, 2, 3, 4, 2, 3, 4, 2, 7, 8],
-            vec![8, 1, 8, 1, 8, 1, 9, 1, 1, 1, 1, 2, 1, 1, 1],
+            BatteryBank {
+                digits: vec![9, 8, 7, 6, 5, 4, 3, 2, 1, 1, 1, 1, 1, 1, 1],
+            },
+            BatteryBank {
+                digits: vec![8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 9],
+            },
+            BatteryBank {
+                digits: vec![2, 3, 4, 2, 3, 4, 2, 3, 4, 2, 3, 4, 2, 7, 8],
+            },
+            BatteryBank {
+                digits: vec![8, 1, 8, 1, 8, 1, 9, 1, 1, 1, 1, 2, 1, 1, 1],
+            },
         ];
 
         let (_remaining, parsed) = parse(input).expect("parser should succeed");
@@ -82,15 +105,28 @@ mod tests {
     #[test]
     fn test_find_largest_joltage() {
         let cases = [
-            (vec![9, 8, 7, 6, 5, 4, 3, 2, 1, 1, 1, 1, 1, 1, 1], 98),
-            (vec![8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 9], 89),
-            (vec![2, 3, 4, 2, 3, 4, 2, 3, 4, 2, 3, 4, 2, 7, 8], 78),
-            (vec![8, 1, 8, 1, 8, 1, 9, 1, 1, 1, 1, 2, 1, 1, 1], 92),
+            (
+                vec![9, 8, 7, 6, 5, 4, 3, 2, 1, 1, 1, 1, 1, 1, 1],
+                987654321111,
+            ),
+            (
+                vec![8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 9],
+                811111111119,
+            ),
+            (
+                vec![2, 3, 4, 2, 3, 4, 2, 3, 4, 2, 3, 4, 2, 7, 8],
+                434234234278,
+            ),
+            (
+                vec![8, 1, 8, 1, 8, 1, 9, 1, 1, 1, 1, 2, 1, 1, 1],
+                888911112111,
+            ),
         ];
 
-        for (bank, expected) in cases {
-            let result = find_largest_joltage(&bank);
-            assert_eq!(result, expected, "{}", format!("bank: {:?}", bank))
+        for (digits, expected) in cases {
+            let battery_bank = BatteryBank { digits: digits.clone() };
+            let result = find_largest_joltage(12, &battery_bank);
+            assert_eq!(result, expected, "{}", format!("bank: {:?}", digits))
         }
     }
 
@@ -104,7 +140,7 @@ mod tests {
         let (_remaining, items) = parse(input).expect("should parse");
 
         let result = solve(&items);
-        let expected = 357;
+        let expected = 3121910778619;
         assert_eq!(result, expected);
     }
 }
