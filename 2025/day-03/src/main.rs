@@ -17,7 +17,7 @@ struct BatteryBank {
     digits: Vec<u8>,
 }
 
-fn digits_to_u64(digits: &[u8]) -> u64 {
+fn digits_to_u64(digits: Vec<u8>) -> u64 {
     digits.iter().fold(0u64, |acc, &d| acc * 10 + d as u64)
 }
 
@@ -37,24 +37,29 @@ fn parse(input: &str) -> IResult<&str, Vec<BatteryBank>> {
     .parse(input)
 }
 
-fn find_largest_joltage(joltage_size: usize, battery_bank: &BatteryBank) -> u64 {
-    let n = battery_bank.digits.len();
-
-    if n <= joltage_size {
-        return digits_to_u64(&battery_bank.digits);
+fn keep_largest_digits(digits: &[u8], keep: usize) -> Vec<u8> {
+    if digits.len() <= keep {
+        return digits.to_vec();
     }
 
-    let mut max_bank = BatteryBank { digits: vec![0] };
-    for idx in 0..n {
-        let mut next_bank = battery_bank.digits.clone();
-        next_bank.remove(idx);
-        let next_battery_bank = BatteryBank { digits: next_bank };
-        if next_battery_bank > max_bank {
-            max_bank = next_battery_bank;
+    let mut remove = digits.len() - keep;
+    let mut stack: Vec<u8> = Vec::with_capacity(digits.len());
+
+    for &d in digits {
+        while remove > 0 && stack.last().is_some_and(|&last| last < d) {
+            stack.pop();
+            remove -= 1;
         }
+        stack.push(d);
     }
 
-    find_largest_joltage(12, &max_bank)
+    stack.truncate(keep);
+    stack
+}
+
+fn find_largest_joltage(keep: usize, battery_bank: &BatteryBank) -> u64 {
+    let kept = keep_largest_digits(&battery_bank.digits, keep);
+    digits_to_u64(kept)
 }
 
 fn solve(parsed: &[BatteryBank]) -> u64 {
@@ -124,7 +129,9 @@ mod tests {
         ];
 
         for (digits, expected) in cases {
-            let battery_bank = BatteryBank { digits: digits.clone() };
+            let battery_bank = BatteryBank {
+                digits: digits.clone(),
+            };
             let result = find_largest_joltage(12, &battery_bank);
             assert_eq!(result, expected, "{}", format!("bank: {:?}", digits))
         }
