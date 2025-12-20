@@ -3,7 +3,7 @@ use nom::{
     IResult,
     branch::alt,
     bytes::complete::tag,
-    character::complete::{digit1, line_ending},
+    character::complete::{digit1, line_ending, multispace0},
     combinator::{all_consuming, map, map_res, value},
     multi::{many0, separated_list1},
     sequence::{delimited, pair},
@@ -24,9 +24,9 @@ fn item(input: &str) -> IResult<&str, Item> {
 
 fn parse(input: &str) -> IResult<&str, Vec<X>> {
     all_consuming(delimited(
-        many0(line_ending),
+        multispace0,
         separated_list1(line_ending, item),
-        many0(line_ending),
+        multispace0,
     ))
     .parse(input)
 }
