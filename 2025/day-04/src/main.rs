@@ -12,7 +12,7 @@ use nom::{
 use std::fs;
 
 const FILE_PATH: &str = "./input.txt";
-const DAY_AND_PART: &str = "Day 4 Part 1";
+const DAY_AND_PART: &str = "Day 4 Part 2";
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum Cell {
@@ -45,7 +45,7 @@ impl Grid {
         Some(self.cells[self.idx(row_idx, col_idx)])
     }
 
-    fn neighbors8<'a>(&'a self, row_idx: usize, col_idx: usize) -> impl Iterator<Item = Cell> + 'a {
+    fn neighbors8(&self, row_idx: usize, col_idx: usize) -> impl Iterator<Item = Cell> + '_ {
         const OFFSETS: [(isize, isize); 8] = [
             (-1, -1),
             (-1, 0),
@@ -98,12 +98,14 @@ fn parse(input: &str) -> IResult<&str, Grid> {
     ))
 }
 
-fn solve(grid: &Grid) -> u32 {
+fn remove_accessible(grid: &Grid) -> (u32, Grid) {
     let mut accessible = 0u32;
+    let mut next_cells: Vec<Cell> = Vec::with_capacity(grid.cells.len());
 
     for row_idx in 0..grid.height {
         for col_idx in 0..grid.width {
             if grid.cells[grid.idx(row_idx, col_idx)] == Cell::Dot {
+                next_cells.push(Cell::Dot);
                 continue;
             }
 
@@ -113,18 +115,41 @@ fn solve(grid: &Grid) -> u32 {
                 .count();
 
             if adjacent_ats < 4 {
+                next_cells.push(Cell::Dot);
                 accessible += 1;
+            } else {
+                next_cells.push(Cell::At);
             }
         }
     }
 
-    accessible
+    let next_grid: Grid = Grid {
+        width: grid.width,
+        height: grid.height,
+        cells: next_cells,
+    };
+
+    (accessible, next_grid)
+}
+
+fn solve(mut grid: Grid) -> u32 {
+    let mut removed = 0u32;
+
+    loop {
+        let (count_removed, next_grid) = remove_accessible(&grid);
+        removed += count_removed;
+
+        if count_removed == 0 {
+            break removed;
+        }
+        grid = next_grid;
+    }
 }
 
 fn main() {
     let input = fs::read_to_string(FILE_PATH).expect("should load input data");
     let (_remaining, parsed) = parse(&input).expect("should parse");
-    let result = solve(&parsed);
+    let result = solve(parsed);
     println!("[{}] Result: {}", DAY_AND_PART, result)
 }
 
@@ -159,6 +184,26 @@ mod tests {
         assert_eq!(parsed, expected);
     }
 
+    #[test]
+    fn test_remove_accesible() {
+        let input = "..@
+@@@
+@.@";
+
+        let (_remaining, grid) = parse(input).expect("should parse");
+
+        let result = remove_accessible(&grid);
+
+        let expected_grid_input = "...
+.@.
+...";
+        let (_remaining, next_grid) = parse(expected_grid_input).expect("should parse");
+
+        let expected = (5, next_grid);
+
+        assert_eq!(result, expected);
+    }
+
     //  0123456789
     //0 ..xx.xx@x.
     //1 x@@.@.@.@@
@@ -172,7 +217,7 @@ mod tests {
     //9 x.x.@@@.x.
 
     #[test]
-    fn test_day_4_part_1() {
+    fn test_day_4_part_2() {
         let input = "..@@.@@@@.
 @@@.@.@.@@
 @@@@@.@.@@
@@ -186,8 +231,8 @@ mod tests {
 
         let (_remaining, items) = parse(input).expect("should parse");
 
-        let result = solve(&items);
-        let expected = 13;
+        let result = solve(items);
+        let expected = 43;
         assert_eq!(result, expected);
     }
 }
