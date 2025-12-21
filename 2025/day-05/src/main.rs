@@ -11,17 +11,17 @@ use nom::{
 use std::fs;
 
 const FILE_PATH: &str = "./input.txt";
-const DAY_AND_PART: &str = "Day 5 Part 1";
+const DAY_AND_PART: &str = "Day 5 Part 2";
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct FreshIdRange {
     start: u64,
     end: u64,
 }
 
 impl FreshIdRange {
-    fn contains(&self, id: &u64) -> bool {
-        (self.start..=self.end).contains(id)
+    fn contains(&self, id: u64) -> bool {
+        (self.start..=self.end).contains(&id)
     }
 }
 
@@ -57,16 +57,31 @@ fn parse(input: &str) -> IResult<&str, (Vec<FreshIdRange>, Vec<u64>)> {
     .parse(input)
 }
 
-fn solve(id_ranges: &[FreshIdRange], ids: &[u64]) -> usize {
-    ids.iter()
-        .filter(|id| id_ranges.iter().any(|r| r.contains(id)))
-        .count()
+fn solve(id_ranges: &[FreshIdRange]) -> u64 {
+    let mut sorted = id_ranges.to_vec();
+    sorted.sort();
+
+    let mut count = 0;
+    let mut current = 0;
+
+    for range in sorted {
+        let mut s = range.start;
+        if current >= s {
+            s = current + 1;
+        }
+        if range.end >= s {
+            count += range.end - s + 1;
+        }
+        current = std::cmp::max(range.end, current);
+    }
+
+    count
 }
 
 fn main() {
     let input = fs::read_to_string(FILE_PATH).expect("should load input data");
-    let (_remaining, (id_ranges, ids)) = parse(&input).expect("should parse");
-    let result = solve(&id_ranges, &ids);
+    let (_remaining, (id_ranges, _ids)) = parse(&input).expect("should parse");
+    let result = solve(&id_ranges);
     println!("[{}] Result: {}", DAY_AND_PART, result)
 }
 
@@ -104,11 +119,12 @@ mod tests {
     }
 
     #[test]
-    fn test_day_4_part_1() {
+    fn test_day_4_part_2() {
         let input = "3-5
-10-14
 16-20
 12-18
+17-19
+10-14
 
 1
 5
@@ -116,10 +132,10 @@ mod tests {
 11
 17
 32";
-        let (_remaining, (id_ranges, ids)) = parse(input).expect("should parse");
+        let (_remaining, (id_ranges, _ids)) = parse(input).expect("should parse");
 
-        let result = solve(&id_ranges, &ids);
-        let expected = 3;
+        let result = solve(&id_ranges);
+        let expected = 14;
         assert_eq!(result, expected);
     }
 }
