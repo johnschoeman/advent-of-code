@@ -1,18 +1,14 @@
 use nom::Parser;
 use nom::{
     IResult,
-    branch::alt,
-    bytes::complete::tag,
-    character::complete::{digit1, line_ending, space0, space1},
-    combinator::{all_consuming, map, map_res, value},
-    multi::{many1, separated_list1},
-    sequence::{delimited, terminated},
+    character::complete::{line_ending, not_line_ending},
+    multi::separated_list1,
 };
 
 use std::fs;
 
 const FILE_PATH: &str = "./input.txt";
-const DAY_AND_PART: &str = "Day 6 Part 1";
+const DAY_AND_PART: &str = "Day 6 Part 2";
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum Op {
@@ -20,58 +16,73 @@ enum Op {
     Mul,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-struct Parsed {
-    numbers: Vec<Vec<u64>>,
-    ops: Vec<Op>,
+impl TryFrom<char> for Op {
+    type Error = ();
+
+    fn try_from(c: char) -> Result<Self, Self::Error> {
+        match c {
+            '+' => Ok(Op::Add),
+            '*' => Ok(Op::Mul),
+            _ => Err(()),
+        }
+    }
 }
 
-fn u64_number(input: &str) -> IResult<&str, u64> {
-    map_res(digit1, str::parse).parse(input)
-}
+type Parsed = Vec<(Op, Vec<u64>)>;
 
-fn number_line(input: &str) -> IResult<&str, Vec<u64>> {
-    terminated(
-        delimited(space0, separated_list1(space1, u64_number), space0),
-        line_ending,
-    )
-    .parse(input)
-}
+fn transpose(grid: &Vec<Vec<char>>) -> Vec<Vec<char>> {
+    if grid.is_empty() {
+        return vec![];
+    }
 
-fn op(input: &str) -> IResult<&str, Op> {
-    alt((value(Op::Add, tag("+")), value(Op::Mul, tag("*")))).parse(input)
-}
+    let rows = grid.len();
+    let cols = grid[0].len();
 
-fn ops_line(input: &str) -> IResult<&str, Vec<Op>> {
-    terminated(
-        delimited(space0, separated_list1(space1, op), space0),
-        line_ending,
-    )
-    .parse(input)
+    (0..cols)
+        .map(|c| (0..rows).map(|r| grid[r][c]).collect())
+        .collect()
 }
 
 fn parse(input: &str) -> IResult<&str, Parsed> {
-    map(
-        all_consuming((many1(number_line), ops_line)),
-        |(numbers, ops)| Parsed { numbers, ops },
-    )
-    .parse(input)
+    let (rest, lines) = separated_list1(line_ending, not_line_ending).parse(input)?;
+
+    let grid: Vec<Vec<char>> = lines
+        .into_iter()
+        .filter(|line| !line.is_empty())
+        .map(|line| line.chars().collect())
+        .collect();
+
+    let columns = transpose(&grid);
+
+    let parsed: Parsed = columns
+        .split(|col| col.iter().all(|&c| c == ' '))
+        .map(|group| {
+            let op_char = *group[0].last().expect("should be non empty column");
+            let op = Op::try_from(op_char).expect("should be an operator");
+
+            let numbers = group
+                .iter()
+                .map(|col| {
+                    let s: String = col[..col.len() - 1].iter().collect();
+                    s.trim().parse::<u64>().expect("should be a number")
+                })
+                .collect::<Vec<u64>>();
+
+            (op, numbers)
+        })
+        .collect();
+
+    Ok((rest, parsed))
 }
 
 fn solve(parsed: &Parsed) -> u64 {
     parsed
-        .ops
         .iter()
-        .enumerate()
-        .map(|(col, &op)| {
-            let values = parsed.numbers.iter().map(|row| row[col]);
-
-            match op {
-                Op::Add => values.sum::<u64>(),
-                Op::Mul => values.product::<u64>(),
-            }
+        .map(|p| match p {
+            (Op::Mul, numbers) => numbers.iter().product::<u64>(),
+            (Op::Add, numbers) => numbers.iter().sum::<u64>(),
         })
-        .sum()
+        .sum::<u64>()
 }
 
 fn main() {
@@ -90,17 +101,14 @@ mod tests {
         let input = "123 328  51 64 
  45 64  387 23 
   6 98  215 314
-*   +   *   +
-";
+*   +   *   +  ";
 
-        let expected: Parsed = Parsed {
-            numbers: vec![
-                vec![123, 328, 51, 64],
-                vec![45, 64, 387, 23],
-                vec![6, 98, 215, 314],
-            ],
-            ops: vec![Op::Mul, Op::Add, Op::Mul, Op::Add],
-        };
+        let expected: Parsed = vec![
+            (Op::Mul, vec![1, 24, 356]),
+            (Op::Add, vec![369, 248, 8]),
+            (Op::Mul, vec![32, 581, 175]),
+            (Op::Add, vec![623, 431, 4]),
+        ];
 
         let (_remaining, parsed) = parse(input).expect("parser should succeed");
 
@@ -108,16 +116,15 @@ mod tests {
     }
 
     #[test]
-    fn test_day_6_part_1() {
+    fn test_day_6_part_2() {
         let input = "123 328  51 64 
  45 64  387 23 
   6 98  215 314
-*   +   *   +
-";
+*   +   *   +  ";
         let (_remaining, items) = parse(input).expect("should parse");
 
         let result = solve(&items);
-        let expected = 4277556;
+        let expected = 3263827;
         assert_eq!(result, expected);
     }
 }
