@@ -11,9 +11,9 @@ use nom::{
 use std::fs;
 
 const FILE_PATH: &str = "./input.txt";
-const DAY_AND_PART: &str = "Day 8 Part 1";
+const DAY_AND_PART: &str = "Day 8 Part 2";
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct Junction {
     x: i64,
     y: i64,
@@ -41,14 +41,15 @@ fn parse(input: &str) -> IResult<&str, Vec<Junction>> {
     .parse(input)
 }
 
-fn dist(a: &Junction, b: &Junction) -> i64 {
+fn dist(a: Junction, b: Junction) -> i64 {
     (a.x - b.x).pow(2) + (a.y - b.y).pow(2) + (a.z - b.z).pow(2)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Dsu {
     parent: Vec<usize>,
     size: Vec<i64>,
+    components: usize,
 }
 
 impl Dsu {
@@ -56,6 +57,7 @@ impl Dsu {
         Self {
             parent: (0..n).collect(),
             size: vec![1; n],
+            components: n,
         }
     }
 
@@ -67,11 +69,11 @@ impl Dsu {
         self.parent[x]
     }
 
-    fn union(&mut self, a: usize, b: usize) {
+    fn union(&mut self, a: usize, b: usize) -> bool {
         let mut ra = self.find(a);
         let mut rb = self.find(b);
         if ra == rb {
-            return;
+            return false;
         }
 
         if self.size[ra] < self.size[rb] {
@@ -79,51 +81,43 @@ impl Dsu {
         }
         self.parent[rb] = ra;
         self.size[ra] += self.size[rb];
+        self.components -= 1;
+        true
     }
 
-    fn component_sizes(mut self) -> Vec<i64> {
-        for i in 0..self.parent.len() {
-            let _ = self.find(i);
-        }
-        self.parent
-            .iter()
-            .enumerate()
-            .filter_map(|(i, &p)| (i == p).then_some(self.size[i]))
-            .collect()
+    fn is_fully_connected(&self) -> bool {
+        self.components == 1
     }
 }
 
-fn solve(junctions: &[Junction], n: usize) -> i64 {
-    let mut edges: Vec<(usize, usize, i64, &Junction, &Junction)> = vec![];
+fn solve(junctions: &[Junction]) -> i64 {
+    let m = junctions.len();
+    let mut edges: Vec<(usize, usize, i64)> = vec![];
 
-    for i in 0..(junctions.len() - 1) {
-        for j in (i + 1)..junctions.len() {
-            let d = dist(&junctions[i], &junctions[j]);
-            edges.push((i, j, d, &junctions[i], &junctions[j]));
+    for i in 0..(m - 1) {
+        for j in (i + 1)..m {
+            let d = dist(junctions[i], junctions[j]);
+            edges.push((i, j, d));
         }
     }
 
     edges.sort_unstable_by(|a, b| a.2.cmp(&b.2));
 
-    let mut circuts = Dsu::new(junctions.len());
+    let mut circuts = Dsu::new(m);
 
-    for &(i, j, _, _, _) in edges.iter().take(n) {
-        circuts.union(i, j);
+    for &(i, j, _) in edges.iter() {
+        if circuts.union(i, j) && circuts.is_fully_connected() {
+            return junctions[i].x * junctions[j].x;
+        };
     }
 
-    let mut sizes = circuts.component_sizes();
-
-    sizes.sort_unstable();
-
-    println!("{:?}", sizes);
-
-    sizes.iter().rev().take(3).product()
+    0
 }
 
 fn main() {
     let input = fs::read_to_string(FILE_PATH).expect("should load input data");
     let (_remaining, parsed) = parse(&input).expect("should parse");
-    let result = solve(&parsed, 1000);
+    let result = solve(&parsed);
     println!("[{}] Result: {}", DAY_AND_PART, result)
 }
 
@@ -154,10 +148,8 @@ mod tests {
         assert_eq!(parsed, expected);
     }
 
-    // 162,817,812 and 425,690,689. 0 19
-    // 162,817,812 and 431,825,988  0 7
     #[test]
-    fn test_day_8_part_1() {
+    fn test_day_8_part_2() {
         let input = "162,817,812
 57,618,57
 906,360,560
@@ -181,8 +173,8 @@ mod tests {
 
         let (_remaining, items) = parse(input).expect("should parse");
 
-        let result = solve(&items, 10);
-        let expected = 40;
+        let result = solve(&items);
+        let expected = 25272;
         assert_eq!(result, expected);
     }
 }
