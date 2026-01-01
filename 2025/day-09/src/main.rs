@@ -11,12 +11,18 @@ use nom::{
 use std::fs;
 
 const FILE_PATH: &str = "./input.txt";
-const DAY_AND_PART: &str = "Day 9 Part 1";
+const DAY_AND_PART: &str = "Day 9 Part 2";
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Position {
     x: isize,
     y: isize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Edge {
+    a: Position,
+    b: Position,
 }
 
 fn number(input: &str) -> IResult<&str, isize> {
@@ -43,13 +49,52 @@ fn area(a: Position, b: Position) -> isize {
     ((a.x - b.x).abs() + 1) * ((a.y - b.y).abs() + 1)
 }
 
-fn solve(points: &[Position]) -> isize {
+fn edges(points: &[Position]) -> Vec<Edge> {
+    let first = points.first().copied();
     points
         .iter()
-        .enumerate()
-        .flat_map(|(i, &a)| points[i + 1..].iter().map(move |&b| area(a, b)))
-        .max()
-        .unwrap_or(0)
+        .copied()
+        .zip(points.iter().copied().skip(1).chain(first))
+        .map(move |(a, b)| Edge { a, b, })
+        .collect::<Vec<Edge>>()
+}
+
+fn rect_ok_for_edge(a: Position, b: Position, e: Edge) -> bool {
+    let (min_x, max_x) = (a.x.min(b.x), a.x.max(b.x));
+    let (min_y, max_y) = (a.y.min(b.y), a.y.max(b.y));
+
+    let (emin_x, emax_x) = (e.a.x.min(e.b.x), e.a.x.max(e.b.x));
+    let (emin_y, emax_y) = (e.a.y.min(e.b.y), e.a.y.max(e.b.y));
+
+    let left  = max_x <= emin_x;
+    let right = min_x >= emax_x;
+    let above = max_y <= emin_y;
+    let below = min_y >= emax_y;
+
+    left || right || above || below
+}
+
+fn solve(points: &[Position]) -> isize {
+    let es = edges(points);
+
+    let mut best = 0;
+
+    for (i, &a) in points.iter().enumerate() {
+        for &b in &points[i + 1..] {
+            let candidate = area(a, b);
+
+            if candidate <= best {
+                continue;
+            }
+
+            let ok = es.iter().copied().all(|e| rect_ok_for_edge(a, b, e));
+            if ok {
+                best = candidate;
+            }
+        }
+    }
+
+    best
 }
 
 fn main() {
@@ -91,7 +136,7 @@ mod tests {
     }
 
     #[test]
-    fn test_day_9_part_1() {
+    fn test_day_9_part_2() {
         let input = "7,1
 11,1
 11,7
@@ -103,7 +148,7 @@ mod tests {
         let (_remaining, tiles) = parse(input).expect("should parse");
 
         let result = solve(&tiles);
-        let expected = 50;
+        let expected = 24;
         assert_eq!(result, expected);
     }
 }
