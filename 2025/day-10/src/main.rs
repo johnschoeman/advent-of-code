@@ -8,43 +8,39 @@ use nom::{
     multi::{many1, separated_list1},
     sequence::{delimited, preceded},
 };
+use z3::{Optimize, ast::Int};
 
-use std::collections::{HashSet, VecDeque};
 use std::fs;
 
 const FILE_PATH: &str = "./input.txt";
-const DAY_AND_PART: &str = "Day 10 Part 1";
+const DAY_AND_PART: &str = "Day 10 Part 2";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Light {
     On,
     Off,
 }
-impl Light {
-    fn toggle(&self) -> Self {
-        match self {
-            Light::On => Light::Off,
-            Light::Off => Light::On,
-        }
-    }
-}
 
 type LightDiagram = Vec<Light>;
-type ButtonWiring = Vec<usize>;
-type Joltage = Vec<usize>;
+type ButtonWiring = Vec<Int>;
+type Joltage = Vec<u64>;
 
 #[derive(Clone, Debug, PartialEq)]
 struct Machine {
-    light_diagram: LightDiagram,
     button_wirings: Vec<ButtonWiring>,
-    joltage: Joltage,
+    light_target: LightDiagram,
+    joltage_target: Joltage,
 }
 
 fn light(input: &str) -> IResult<&str, Light> {
     alt((value(Light::On, tag("#")), value(Light::Off, tag(".")))).parse(input)
 }
 
-fn num_usize(input: &str) -> IResult<&str, usize> {
+fn number(input: &str) -> IResult<&str, usize> {
+    digit1.map_res(str::parse).parse(input)
+}
+
+fn number_u64(input: &str) -> IResult<&str, u64> {
     digit1.map_res(str::parse).parse(input)
 }
 
@@ -52,29 +48,52 @@ fn light_diagram(input: &str) -> IResult<&str, LightDiagram> {
     delimited(tag("["), many1(light), tag("]")).parse(input)
 }
 
-fn button_wirings(input: &str) -> IResult<&str, Vec<ButtonWiring>> {
+fn buttons(input: &str) -> IResult<&str, Vec<Vec<usize>>> {
     separated_list1(
         tag(" "),
-        delimited(tag("("), separated_list1(tag(","), num_usize), tag(")")),
+        delimited(tag("("), separated_list1(tag(","), number), tag(")")),
     )
     .parse(input)
 }
 
 fn joltage(input: &str) -> IResult<&str, Joltage> {
-    delimited(tag("{"), separated_list1(tag(","), num_usize), tag("}")).parse(input)
+    delimited(tag("{"), separated_list1(tag(","), number_u64), tag("}")).parse(input)
+}
+
+fn build_button_matrix(values: Vec<Vec<usize>>, n: usize) -> Vec<ButtonWiring> {
+    let m = values.len();
+    let mut button_wirings: Vec<ButtonWiring> = Vec::with_capacity(n);
+
+    for i in 0..n {
+        let mut wiring = Vec::with_capacity(m);
+        for j in 0..m {
+            if values[j].iter().find(|&x| *x == i).is_some() {
+                wiring.push(Int::from_u64(1));
+            } else {
+                wiring.push(Int::from_u64(0));
+            }
+        }
+
+        button_wirings.push(wiring);
+    }
+
+    button_wirings
 }
 
 fn machine(input: &str) -> IResult<&str, Machine> {
-    let (input, light_diagram) = light_diagram.parse(input)?;
-    let (input, button_wirings) = preceded(tag(" "), button_wirings).parse(input)?;
-    let (input, joltage) = preceded(tag(" "), joltage).parse(input)?;
+    let (input, light_target) = light_diagram.parse(input)?;
+    let (input, buttons) = preceded(tag(" "), buttons).parse(input)?;
+    let (input, joltage_target) = preceded(tag(" "), joltage).parse(input)?;
+
+    let n = joltage_target.len();
+    let button_wirings = build_button_matrix(buttons, n);
 
     Ok((
         input,
         Machine {
-            light_diagram,
             button_wirings,
-            joltage,
+            light_target,
+            joltage_target,
         },
     ))
 }
@@ -88,34 +107,57 @@ fn parse(input: &str) -> IResult<&str, Vec<Machine>> {
     .parse(input)
 }
 
+// x1  x2    x3  x4    x5    x6
+// (3) (1,3) (2) (2,3) (0,2) (0,1) {3,5,4,7}
+
+// 0x1 + 0x2 + 0x3 + 0x4 + 1x5 + 1x6 = 3
+// 0x1 + 1x2 + 0x3 + 0x4 + 0x5 + 1x6 = 5
+// 0x1 + 0x2 + 1x3 + 1x4 + 1x5 + 0x6 = 4
+// 1x1 + 1x2 + 0x3 + 1x4 + 0x5 + 0x6 = 7
+
+// Ax = b
 fn solve_machine(machine: &Machine) -> usize {
-    let start: LightDiagram = vec![Light::Off; machine.light_diagram.len()];
+    let joltage = &machine.joltage_target;
+    let n = joltage.len();
 
-    let mut q = VecDeque::from([(start.clone(), 0)]);
-    let mut seen = HashSet::from([start]);
+    let buttons = &machine.button_wirings;
+    let m = buttons[0].len();
 
-    while let Some((state, depth)) = q.pop_front() {
-        for wiring in machine.button_wirings.iter() {
-            let next = toggle_lights(&state, wiring);
+    let opt = Optimize::new();
 
-            if next == machine.light_diagram {
-                return depth + 1;
-            }
-            if seen.insert(next.clone()) {
-                q.push_back((next, depth + 1))
-            }
+    let mut x = Vec::with_capacity(m);
+    let mut count = Int::from_u64(0);
+    for i in 0..m {
+        let xn = Int::new_const(format!("x{}", i));
+        opt.assert(&xn.ge(0));
+        count = count + xn.clone();
+        x.push(xn);
+    }
+    opt.minimize(&count);
+
+    for i in 0..n {
+        let wiring = &buttons[i];
+        let mut eq = Int::from_u64(0);
+        for j in 0..m {
+            eq = eq + wiring[j].clone() * &x[j];
         }
+        opt.assert(&eq.eq(&Int::from_u64(joltage[i])));
     }
 
-    0
-}
+    if opt.check(&[]) == z3::SatResult::Sat {
+        let model = opt.get_model().unwrap();
 
-fn toggle_lights(light_diagram: &LightDiagram, button_wiring: &ButtonWiring) -> LightDiagram {
-    let mut next = light_diagram.clone();
-    for button in button_wiring.iter() {
-        next[*button] = next[*button].toggle();
+        let mut count = 0u64;
+        for i in 0..m {
+            let xn = model.eval(&x[i], true).unwrap().as_u64().unwrap();
+            count += xn;
+        }
+
+        return count.try_into().unwrap();
+    } else {
+        println!("No solution found.");
+        return 0;
     }
-    next
 }
 
 fn solve(machines: &[Machine]) -> usize {
@@ -138,16 +180,42 @@ mod tests {
         let input = "[.##.] (3) (1,3) (2) (2,3) (0,2) (0,1) {3,5,4,7}";
 
         let expected: Vec<Machine> = vec![Machine {
-            light_diagram: vec![Light::Off, Light::On, Light::On, Light::Off],
             button_wirings: vec![
-                vec![3],
-                vec![1, 3],
-                vec![2],
-                vec![2, 3],
-                vec![0, 2],
-                vec![0, 1],
+                vec![
+                    Int::from_u64(0),
+                    Int::from_u64(0),
+                    Int::from_u64(0),
+                    Int::from_u64(0),
+                    Int::from_u64(1),
+                    Int::from_u64(1),
+                ],
+                vec![
+                    Int::from_u64(0),
+                    Int::from_u64(1),
+                    Int::from_u64(0),
+                    Int::from_u64(0),
+                    Int::from_u64(0),
+                    Int::from_u64(1),
+                ],
+                vec![
+                    Int::from_u64(0),
+                    Int::from_u64(0),
+                    Int::from_u64(1),
+                    Int::from_u64(1),
+                    Int::from_u64(1),
+                    Int::from_u64(0),
+                ],
+                vec![
+                    Int::from_u64(1),
+                    Int::from_u64(1),
+                    Int::from_u64(0),
+                    Int::from_u64(1),
+                    Int::from_u64(0),
+                    Int::from_u64(0),
+                ],
             ],
-            joltage: vec![3, 5, 4, 7],
+            light_target: vec![Light::Off, Light::On, Light::On, Light::Off],
+            joltage_target: vec![3, 5, 4, 7],
         }];
 
         let (_remaining, parsed) = parse(input).expect("parser should succeed");
@@ -164,7 +232,7 @@ mod tests {
         let (_remaining, machines) = parse(input).expect("should parse");
 
         let result = solve(&machines);
-        let expected = 7;
+        let expected = 33;
         assert_eq!(result, expected);
     }
 }
