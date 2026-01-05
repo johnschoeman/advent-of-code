@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::fs;
 
 const FILE_PATH: &str = "./input.txt";
-const DAY_AND_PART: &str = "Day 11 Part 1";
+const DAY_AND_PART: &str = "Day 11 Part 2";
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct Device<'a> {
@@ -39,8 +39,9 @@ fn parse(input: &str) -> IResult<&str, Vec<Device<'_>>> {
 }
 
 type Node = usize;
+type Index<'a> = HashMap<&'a str, Node>;
 
-fn build_index<'a>(devices: &'a [Device<'a>]) -> HashMap<&'a str, Node> {
+fn build_index<'a>(devices: &'a [Device<'a>]) -> Index<'a> {
     devices
         .iter()
         .enumerate()
@@ -48,8 +49,16 @@ fn build_index<'a>(devices: &'a [Device<'a>]) -> HashMap<&'a str, Node> {
         .collect()
 }
 
-fn successors<'a>(n: Node, index: &HashMap<&str, Node>, devices: &[Device<'_>]) -> Vec<Node> {
-    devices[n].outputs.iter().map(|name| index[name]).collect()
+fn successors<'a>(n: &Node, index: &Index<'a>, devices: &[Device<'_>]) -> Vec<Node> {
+    devices[*n].outputs.iter().map(|name| index[name]).collect()
+}
+
+fn paths(from: Node, to: Node, index: &Index, devices: &[Device<'_>]) -> usize {
+    count_paths(
+        from,
+        |n: &Node| successors(n, index, devices),
+        |p: &Node| *p == to,
+    )
 }
 
 fn solve<'a>(parsed: &'a [Device<'a>]) -> usize {
@@ -61,16 +70,19 @@ fn solve<'a>(parsed: &'a [Device<'a>]) -> usize {
 
     let index = build_index(&devices);
 
-    let start = index["you"];
+    let svr = index["svr"];
+    let dac = index["dac"];
+    let fft = index["fft"];
     let out = index["out"];
 
-    let result = count_paths(
-        start,
-        |n: &Node| successors(*n, &index, &devices),
-        |p: &Node| *p == out,
-    );
+    let svr_dac = paths(svr, dac, &index, &devices);
+    let svr_fft = paths(svr, fft, &index, &devices);
+    let fft_dac = paths(fft, dac, &index, &devices);
+    let dac_fft = paths(dac, fft, &index, &devices);
+    let dac_out = paths(dac, out, &index, &devices);
+    let fft_out = paths(fft, out, &index, &devices);
 
-    result
+    svr_dac * dac_fft * fft_out + svr_fft * fft_dac * dac_out
 }
 
 fn main() {
@@ -106,22 +118,25 @@ you: bbb ccc";
     }
 
     #[test]
-    fn test_day_11_part_1() {
-        let input = "aaa: you hhh
-you: bbb ccc
-bbb: ddd eee
-ccc: ddd eee fff
-ddd: ggg
-eee: out
-fff: out
+    fn test_day_11_part_2() {
+        let input = "svr: aaa bbb
+aaa: fft
+fft: ccc
+bbb: tty
+tty: ccc
+ccc: ddd eee
+ddd: hub
+hub: fff
+eee: dac
+dac: fff
+fff: ggg hhh
 ggg: out
-hhh: ccc fff iii
-iii: out";
+hhh: out";
 
         let (_remaining, devices) = parse(input).expect("should parse");
 
         let result = solve(&devices);
-        let expected = 5;
+        let expected = 2;
         assert_eq!(result, expected);
     }
 }
